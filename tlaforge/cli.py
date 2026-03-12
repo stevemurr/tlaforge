@@ -1,20 +1,11 @@
-#!/usr/bin/env python3
-"""
-TLAForge CLI — generate TLA+ specs from natural language.
+"""Package-native CLI for the Anthropic-backed TLAForge agent."""
 
-Usage:
-    python run.py "describe your system here"
-    python run.py --demo
-    python run.py --from-file description.txt
-"""
+from __future__ import annotations
 
-import sys
-import os
 import argparse
+from pathlib import Path
 
-sys.path.insert(0, os.path.dirname(__file__))
-
-from tlaforge.agent import TLAForgeAgent
+from .agent import TLAForgeAgent
 
 
 DEMO_DESCRIPTION = """
@@ -48,41 +39,50 @@ in exactly one state, and yellow is always between green and red.
 """
 
 
-def main():
-    parser = argparse.ArgumentParser(description="TLAForge: Generate TLA+ specs with AI")
+def _load_description(args: argparse.Namespace) -> tuple[str, str]:
+    if args.demo:
+        return "TLAForge Demo: Todo App", DEMO_DESCRIPTION
+    if args.traffic:
+        return "TLAForge Demo: Traffic Light", TRAFFIC_LIGHT_DESCRIPTION
+    if args.from_file:
+        path = Path(args.from_file)
+        return f"TLAForge: Generating spec from {path}", path.read_text(encoding="utf-8")
+    if args.description:
+        return "TLAForge: Generating spec", args.description
+    raise ValueError("Missing description input")
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Anthropic-backed TLAForge prototype CLI. "
+            "For the human-first quick start, start with the examples/ folder."
+        )
+    )
     parser.add_argument("description", nargs="?", help="Natural language system description")
     parser.add_argument("--demo", action="store_true", help="Run the todo app demo")
     parser.add_argument("--traffic", action="store_true", help="Run the traffic light demo")
     parser.add_argument("--from-file", metavar="FILE", help="Read description from file")
     parser.add_argument("--output", metavar="FILE", help="Write TLA+ to file")
     parser.add_argument("--interactive", action="store_true", help="Enter refinement loop after generation")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
-    # Determine description
-    if args.demo:
-        description = DEMO_DESCRIPTION
-        print("=== TLAForge Demo: Todo App ===\n")
-    elif args.traffic:
-        description = TRAFFIC_LIGHT_DESCRIPTION
-        print("=== TLAForge Demo: Traffic Light ===\n")
-    elif args.from_file:
-        with open(args.from_file) as f:
-            description = f.read()
-        print(f"=== TLAForge: Generating spec from {args.from_file} ===\n")
-    elif args.description:
-        description = args.description
-        print("=== TLAForge: Generating spec ===\n")
-    else:
+    if not any([args.demo, args.traffic, args.from_file, args.description]):
         parser.print_help()
-        sys.exit(1)
+        return 1
+
+    title, description = _load_description(args)
+    print(f"=== {title} ===\n")
 
     print(f"Description:\n{description.strip()}\n")
     print("-" * 50)
     print("Generating TLA+ spec...\n")
 
     agent = TLAForgeAgent()
-
-    tla, code = agent.generate(description)
+    try:
+        tla, code = agent.generate(description)
+    except Exception as exc:
+        parser.exit(status=1, message=f"Error: {exc}\n")
 
     print("\n" + "=" * 50)
     print("Generated Python (builder code):")
@@ -96,13 +96,12 @@ def main():
 
     # Write output
     if args.output:
-        with open(args.output, "w") as f:
-            f.write(tla)
-        print(f"\nTLA+ written to: {args.output}")
+        output_path = Path(args.output)
+        output_path.write_text(tla, encoding="utf-8")
+        print(f"\nTLA+ written to: {output_path}")
 
-        code_path = args.output.replace(".tla", "_builder.py")
-        with open(code_path, "w") as f:
-            f.write(code)
+        code_path = output_path.with_name(f"{output_path.stem}_builder.py")
+        code_path.write_text(code, encoding="utf-8")
         print(f"Builder code written to: {code_path}")
 
     # Interactive refinement loop
@@ -119,17 +118,21 @@ def main():
                 continue
 
             print("\nRefining spec...")
-            tla, code = agent.refine(feedback)
+            try:
+                tla, code = agent.refine(feedback)
+            except Exception as exc:
+                print(f"Error: {exc}")
+                continue
 
             print("\nUpdated TLA+:")
             print("-" * 40)
             print(tla)
 
             if args.output:
-                with open(args.output, "w") as f:
-                    f.write(tla)
+                Path(args.output).write_text(tla, encoding="utf-8")
                 print(f"\nUpdated TLA+ written to: {args.output}")
 
+    return 0
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

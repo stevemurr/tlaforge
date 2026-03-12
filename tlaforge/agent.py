@@ -1,28 +1,36 @@
-"""
-TLAForge Agent — uses Claude to generate TLA+ specs via the builder library.
+"""Anthropic-backed prototype agent for generating TLA+ specs."""
 
-Flow:
-  1. User describes a system in natural language
-  2. We send Claude the builder API + user description
-  3. Claude returns Python code that calls the builder
-  4. We exec() the code to get a StateMachineSpec object
-  5. We emit the TLA+ and optionally validate it
-"""
+from __future__ import annotations
 
 import json
-import textwrap
-import re
-from typing import Optional
-import sys
 import os
+import re
+import urllib.request
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-
-from tlaforge.builder import (
-    StateMachineSpec, StateTransition, Definition,
-    And, Or, Not, Raw, Var, PrimedVar, StringLit, IntLit,
-    BinOp, Unchanged, Implies, Forall, Exists,
-    SetLit, Eventually, Always, LeadsTo, FunctionApp, Except
+from .builder import (
+    Always,
+    And,
+    BinOp,
+    Definition,
+    Eventually,
+    Except,
+    Exists,
+    Forall,
+    FunctionApp,
+    Implies,
+    IntLit,
+    LeadsTo,
+    Not,
+    Or,
+    PrimedVar,
+    Raw,
+    SetLit,
+    SetOf,
+    StateMachineSpec,
+    StateTransition,
+    StringLit,
+    Unchanged,
+    Var,
 )
 
 
@@ -47,6 +55,7 @@ Fields:
 - extends: List[str]             — e.g. ["Integers", "FiniteSets"]
 - state_var: str                 — name of the state variable (default: "state")
 - aux_vars: List[str]            — additional variable names
+- aux_init: Dict[str, Expr]      — initial values for each auxiliary variable
 - states: List[str]              — all possible state names
 - initial_state: str             — starting state
 - terminal_states: List[str]     — states with no outgoing transitions
@@ -92,6 +101,7 @@ A named TLA+ definition (invariant, helper, liveness property).
 | Always(p) | [](p) | Box (safety) |
 | LeadsTo(p, q) | p ~> q | Leads-to (liveness) |
 | SetLit(e1, e2) | {e1, e2} | Set literal |
+| SetOf("x", domain, p) | { x \\in domain : p } | Set comprehension |
 
 ## Pattern: Standard State Transition
 ```python
@@ -127,9 +137,10 @@ Definition(
 1. Every transition should have a state guard as its first guard
 2. Every transition must account for ALL variables — either update them or list in `unchanged`
 3. Terminal states must have no outgoing transitions
-4. Invariants use current-state variables (no primed vars)
-5. Use Raw() for complex expressions that don\'t have a builder (CASE, LET-IN, etc.)
-6. The variable `spec` must be assigned at the end
+4. Every auxiliary variable listed in aux_vars must have an initial value in aux_init
+5. Invariants use current-state variables (no primed vars)
+6. Use Raw() for complex expressions that don\'t have a builder (CASE, LET-IN, etc.)
+7. The variable `spec` must be assigned at the end
 
 ## Output Format
 Return ONLY a Python code block. No explanation, no markdown, no TLA+.
@@ -145,27 +156,36 @@ spec = StateMachineSpec(...)
 # ---------------------------------------------------------------------------
 
 class TLAForgeAgent:
-    def __init__(self):
+    def __init__(self, model: str = "claude-sonnet-4-20250514", api_key: str | None = None):
+        self.model = model
+        self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
         self.history = []
 
     def _call_claude(self, user_message: str) -> str:
-        import urllib.request
+        if not self.api_key:
+            raise RuntimeError(
+                "Set ANTHROPIC_API_KEY before using the TLAForge agent or CLI."
+            )
 
         payload = {
-            "model": "claude-sonnet-4-20250514",
+            "model": self.model,
             "max_tokens": 4096,
             "system": BUILDER_API_REFERENCE,
-            "messages": self.history + [{"role": "user", "content": user_message}]
+            "messages": self.history + [{"role": "user", "content": user_message}],
         }
 
         req = urllib.request.Request(
             "https://api.anthropic.com/v1/messages",
             data=json.dumps(payload).encode(),
-            headers={"Content-Type": "application/json"},
-            method="POST"
+            headers={
+                "Content-Type": "application/json",
+                "anthropic-version": "2023-06-01",
+                "x-api-key": self.api_key,
+            },
+            method="POST",
         )
 
-        with urllib.request.urlopen(req) as resp:
+        with urllib.request.urlopen(req, timeout=60) as resp:
             data = json.loads(resp.read())
 
         return data["content"][0]["text"]
@@ -190,7 +210,7 @@ class TLAForgeAgent:
             "BinOp": BinOp, "Unchanged": Unchanged,
             "Implies": Implies, "Forall": Forall, "Exists": Exists,
             "SetLit": SetLit, "Eventually": Eventually,
-            "Always": Always, "LeadsTo": LeadsTo,
+            "Always": Always, "LeadsTo": LeadsTo, "SetOf": SetOf,
             "FunctionApp": FunctionApp, "Except": Except,
         }
         exec(code, namespace)
@@ -221,6 +241,7 @@ Please fix the Python code. Remember:
 - Assign the result to `spec`
 - Every transition must account for all variables
 - Use Unchanged() for vars not modified
+- Every auxiliary variable needs an entry in aux_init
 - Return ONLY the Python code block
 """
 

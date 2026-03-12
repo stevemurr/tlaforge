@@ -4,9 +4,9 @@ The LLM calls these classes instead of generating raw TLA+ text.
 """
 
 from __future__ import annotations
+
 from dataclasses import dataclass, field
-from typing import List, Optional, Dict
-from enum import Enum
+from typing import Dict, List, Optional
 
 
 # ---------------------------------------------------------------------------
@@ -281,6 +281,7 @@ class StateMachineSpec:
     # Variables
     state_var: str = "state"
     aux_vars: List[str] = field(default_factory=list)
+    aux_init: Dict[str, Expr] = field(default_factory=dict)
 
     # States
     states: List[str] = field(default_factory=list)
@@ -305,6 +306,24 @@ class StateMachineSpec:
     def all_vars(self) -> List[str]:
         return [self.state_var] + self.aux_vars
 
+    def _validate_aux_init(self) -> None:
+        missing = [name for name in self.aux_vars if name not in self.aux_init]
+        extras = [name for name in self.aux_init if name not in self.aux_vars]
+        errors = []
+
+        if missing:
+            errors.append(
+                "missing initial values for auxiliary variables: "
+                + ", ".join(sorted(missing))
+            )
+        if extras:
+            errors.append(
+                "aux_init includes names not declared in aux_vars: "
+                + ", ".join(sorted(extras))
+            )
+        if errors:
+            raise ValueError("; ".join(errors))
+
     def _emit_header(self) -> str:
         bar = "-" * 20
         lines = [f"{bar} MODULE {self.module_name} {bar}"]
@@ -325,11 +344,12 @@ class StateMachineSpec:
         return f"States == {{{states_str}}}"
 
     def _emit_init(self) -> str:
+        self._validate_aux_init()
         lines = ["Init =="]
         if self.initial_state:
             lines.append(f'    /\\ {self.state_var} = "{self.initial_state}"')
         for v in self.aux_vars:
-            lines.append(f"    /\\ {v} = <<>>  \\* TODO: set initial value")
+            lines.append(f"    /\\ {v} = {self.aux_init[v].emit()}")
         return "\n".join(lines)
 
     def _emit_valid_transitions(self) -> str:
@@ -350,8 +370,8 @@ class StateMachineSpec:
     def _emit_next(self) -> str:
         if not self.transitions:
             return "Next == FALSE  \\* No transitions defined"
-        transition_names = " ".join(f"\n    \\/ {t.name}" for t in self.transitions)
-        return f"Next =={transition_names}"
+        transition_names = "\n    \\/ ".join(t.name for t in self.transitions)
+        return f"Next ==\n    \\/ {transition_names}"
 
     def _emit_spec(self) -> str:
         vars_tuple = "<<" + ", ".join(self.all_vars()) + ">>"

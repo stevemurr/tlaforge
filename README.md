@@ -1,86 +1,76 @@
 # TLAForge
 
-A Python library for programmatically generating TLA+ specs, with an LLM agent that uses the library to produce correct output.
+TLAForge is a small Python package for building TLA+ state machine specs with Python objects instead of raw strings.
 
-## The Core Idea
+The human-first path is the builder library plus the examples in [examples/README.md](/Users/murr/Code/github.com/stevemurr/tlaforge/examples/README.md). The Anthropic-backed agent remains available as a secondary prototype entrypoint.
 
-Instead of asking an LLM to generate raw TLA+ text (which breaks on syntax errors), the LLM generates **Python code that calls a builder library**. The library enforces syntactic correctness — the LLM only has to get the semantics right.
+## Quick Start
 
-```
-User describes system in natural language
-        ↓
-LLM receives builder API as context
-        ↓
-LLM generates Python code calling builder classes
-        ↓
-Builder emits syntactically valid TLA+
-        ↓
-(optional) TLC model checker validates
-        ↓
-Counterexamples feed back to LLM for refinement
+Install the package in editable mode from the repo root:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -e .
 ```
 
-## Usage
+Then work through the example ladder:
 
-### As a library (manual spec construction)
+1. [examples/01-traffic-light/README.md](/Users/murr/Code/github.com/stevemurr/tlaforge/examples/01-traffic-light/README.md)
+2. [examples/02-todo-workflow/README.md](/Users/murr/Code/github.com/stevemurr/tlaforge/examples/02-todo-workflow/README.md)
+3. [examples/03-retrying-job/README.md](/Users/murr/Code/github.com/stevemurr/tlaforge/examples/03-retrying-job/README.md)
+
+## Builder-First Usage
 
 ```python
-from tlaforge import *
+from tlaforge import (
+    BinOp,
+    Definition,
+    PrimedVar,
+    StateMachineSpec,
+    StateTransition,
+    StringLit,
+    Var,
+)
 
 spec = StateMachineSpec(
     module_name="TrafficLight",
     states=["red", "green", "yellow"],
     initial_state="red",
-    terminal_states=[]
 )
 
-spec.transitions.append(StateTransition(
-    name="GreenToYellow",
-    comment="Timer expires on green",
-    guards=[BinOp(Var("state"), "=", StringLit("green"))],
-    updates=[BinOp(PrimedVar("state"), "=", StringLit("yellow"))],
-    unchanged=[]
-))
+spec.transitions.append(
+    StateTransition(
+        name="GreenToYellow",
+        comment="Timer expires on green",
+        guards=[BinOp(Var("state"), "=", StringLit("green"))],
+        updates=[BinOp(PrimedVar("state"), "=", StringLit("yellow"))],
+    )
+)
 
-spec.invariants.append(Definition(
-    name="AlwaysOneState",
-    body=BinOp(Var("state"), "\\in", Var("States"))
-))
+spec.invariants.append(
+    Definition(
+        name="ValidState",
+        comment="The controller is always in one named state",
+        body=BinOp(Var("state"), "\\in", Var("States")),
+    )
+)
 
 print(spec.emit())
 ```
 
-### As an LLM agent
+If you add auxiliary variables, declare their initial values explicitly:
 
 ```python
-from tlaforge import TLAForgeAgent
+from tlaforge import IntLit, StateMachineSpec
 
-agent = TLAForgeAgent()
-
-tla, code = agent.generate("""
-    A simple order processing system with states:
-    pending, processing, shipped, delivered, cancelled.
-    Orders can be cancelled from pending or processing.
-    Once shipped, an order cannot be cancelled.
-""")
-
-print(tla)
-
-# Refine based on feedback
-tla, code = agent.refine("Add a 'returned' state reachable from delivered")
-```
-
-### CLI
-
-```bash
-# Run the todo app demo
-python run.py --demo
-
-# Describe a system inline
-python run.py "An elevator that moves between floors 1-10"
-
-# From a file, with output saved and interactive refinement
-python run.py --from-file my_system.txt --output spec.tla --interactive
+spec = StateMachineSpec(
+    module_name="RetryingJob",
+    states=["queued", "running", "failed"],
+    initial_state="queued",
+    aux_vars=["retries"],
+    aux_init={"retries": IntLit(0)},
+)
 ```
 
 ## Expression Builders
@@ -104,25 +94,35 @@ python run.py --from-file my_system.txt --output spec.tla --interactive
 | `LeadsTo(p, q)` | `p ~> q` |
 | `FunctionApp(f, k)` | `f[k]` |
 | `Except(f, k, v)` | `[f EXCEPT ![k] = v]` |
+| `SetOf("x", domain, p)` | `{ x \in domain : p }` |
 
-## Why This Architecture Works
+## CLI Prototype
 
-The key insight is **separating concerns**:
+The package-native CLI is:
 
-- **Syntax** is handled by the library (guaranteed correct by construction)
-- **Semantics** is handled by the LLM (what states/transitions/invariants make sense)
-- **Validation** is handled by TLC (finds logical errors the LLM missed)
-
-This is the same pattern as SQL query builders vs raw SQL, or AST manipulation vs string-based code generation. The LLM makes far fewer errors when it's constrained to valid API calls rather than free-form text generation.
-
-## Project Structure
-
+```bash
+python -m tlaforge.cli --help
 ```
+
+This CLI uses the Anthropic-backed agent path, so it is not the main quick start. To use it, set `ANTHROPIC_API_KEY` and then run one of these:
+
+```bash
+python -m tlaforge.cli --demo
+python -m tlaforge.cli --traffic
+python -m tlaforge.cli "An elevator that moves between floors 1-10"
+python -m tlaforge.cli --from-file my_system.txt --output spec.tla --interactive
+```
+
+## Project Layout
+
+```text
 tlaforge/
 ├── tlaforge/
 │   ├── __init__.py
-│   ├── builder.py    # Core expression/spec builder classes
-│   └── agent.py      # LLM agent that calls the builder
-├── run.py            # CLI
+│   ├── agent.py
+│   ├── builder.py
+│   └── cli.py
+├── examples/
+├── tests/
 └── README.md
 ```
