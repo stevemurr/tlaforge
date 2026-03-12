@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import base64
+from functools import lru_cache
 import hashlib
 from pathlib import Path
+import tomllib
 import zipfile
 
 
-NAME = "tlaforge"
-VERSION = "0.1.0"
-SUMMARY = "Build TLA+ state machine specs with Python builders."
 TAG = "py3-none-any"
 
 
@@ -18,21 +17,50 @@ def _project_root() -> Path:
     return Path(__file__).resolve().parent
 
 
+@lru_cache(maxsize=1)
+def _project_metadata() -> dict:
+    with (_project_root() / "pyproject.toml").open("rb") as pyproject_file:
+        return tomllib.load(pyproject_file)["project"]
+
+
+def _project_name() -> str:
+    return str(_project_metadata()["name"])
+
+
+def _project_version() -> str:
+    return str(_project_metadata()["version"])
+
+
 def _dist_info_dir() -> str:
-    return f"{NAME}-{VERSION}.dist-info"
+    return f"{_project_name()}-{_project_version()}.dist-info"
 
 
 def _wheel_name() -> str:
-    return f"{NAME}-{VERSION}-{TAG}.whl"
+    return f"{_project_name()}-{_project_version()}-{TAG}.whl"
 
 
 def _metadata_text() -> str:
-    return (
-        "Metadata-Version: 2.1\n"
-        f"Name: {NAME}\n"
-        f"Version: {VERSION}\n"
-        f"Summary: {SUMMARY}\n"
-    )
+    project = _project_metadata()
+    lines = [
+        "Metadata-Version: 2.1",
+        f"Name: {_project_name()}",
+        f"Version: {_project_version()}",
+        f"Summary: {project.get('description', '')}",
+    ]
+
+    if requires_python := project.get("requires-python"):
+        lines.append(f"Requires-Python: {requires_python}")
+
+    for requirement in project.get("dependencies", []):
+        lines.append(f"Requires-Dist: {requirement}")
+
+    optional_dependencies = project.get("optional-dependencies", {})
+    for extra_name, requirements in optional_dependencies.items():
+        lines.append(f"Provides-Extra: {extra_name}")
+        for requirement in requirements:
+            lines.append(f'Requires-Dist: {requirement}; extra == "{extra_name}"')
+
+    return "\n".join(lines) + "\n"
 
 
 def _wheel_text() -> str:
@@ -83,7 +111,7 @@ def _write_wheel_file(
 
 
 def _package_sources() -> list[tuple[str, bytes]]:
-    package_root = _project_root() / NAME
+    package_root = _project_root() / _project_name()
     files = []
     for path in sorted(package_root.rglob("*.py")):
         relpath = path.relative_to(_project_root()).as_posix()
@@ -140,7 +168,7 @@ def build_editable(
     config_settings=None,
     metadata_directory=None,
 ) -> str:
-    editable_pth = f"{NAME}.pth"
+    editable_pth = f"{_project_name()}.pth"
     extra_files = [
         (editable_pth, f"{_project_root()}\n".encode("utf-8")),
     ]

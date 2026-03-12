@@ -113,6 +113,20 @@ python -m tlaforge.cli "An elevator that moves between floors 1-10"
 python -m tlaforge.cli --from-file my_system.txt --output spec.tla --interactive
 ```
 
+## Running Tests
+
+Install the test extras in your virtual environment:
+
+```bash
+python -m pip install -e '.[test]'
+```
+
+Then run the canonical coverage command:
+
+```bash
+python -m pytest --cov=tlaforge --cov=build_backend --cov-report=term-missing --cov-fail-under=90
+```
+
 ## Project Layout
 
 ```text

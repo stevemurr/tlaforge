@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from typing import Protocol
 import urllib.request
 
 from .builder import (
@@ -32,6 +33,74 @@ from .builder import (
     Unchanged,
     Var,
 )
+
+
+# ---------------------------------------------------------------------------
+# Model client
+# ---------------------------------------------------------------------------
+
+HistoryEntry = dict[str, str]
+
+
+class TextGenerationClient(Protocol):
+    def complete(
+        self,
+        *,
+        system_prompt: str,
+        history: list[HistoryEntry],
+        user_message: str,
+        model: str,
+        max_tokens: int,
+    ) -> str:
+        """Return model output text for the next assistant turn."""
+
+
+class AnthropicTextGenerationClient:
+    def __init__(
+        self,
+        *,
+        api_key: str | None = None,
+        endpoint: str = "https://api.anthropic.com/v1/messages",
+    ) -> None:
+        self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
+        self.endpoint = endpoint
+
+    def complete(
+        self,
+        *,
+        system_prompt: str,
+        history: list[HistoryEntry],
+        user_message: str,
+        model: str,
+        max_tokens: int,
+    ) -> str:
+        if not self.api_key:
+            raise RuntimeError(
+                "Set ANTHROPIC_API_KEY before using the TLAForge agent or CLI."
+            )
+
+        payload = {
+            "model": model,
+            "max_tokens": max_tokens,
+            "system": system_prompt,
+            "messages": history + [{"role": "user", "content": user_message}],
+        }
+
+        req = urllib.request.Request(
+            self.endpoint,
+            data=json.dumps(payload).encode(),
+            headers={
+                "Content-Type": "application/json",
+                "anthropic-version": "2023-06-01",
+                "x-api-key": self.api_key,
+            },
+            method="POST",
+        )
+
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            data = json.loads(resp.read())
+
+        return data["content"][0]["text"]
 
 
 # ---------------------------------------------------------------------------
@@ -156,39 +225,26 @@ spec = StateMachineSpec(...)
 # ---------------------------------------------------------------------------
 
 class TLAForgeAgent:
-    def __init__(self, model: str = "claude-sonnet-4-20250514", api_key: str | None = None):
+    def __init__(
+        self,
+        model: str = "claude-sonnet-4-20250514",
+        api_key: str | None = None,
+        client: TextGenerationClient | None = None,
+        max_tokens: int = 4096,
+    ):
         self.model = model
-        self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
+        self.max_tokens = max_tokens
+        self.client = client or AnthropicTextGenerationClient(api_key=api_key)
         self.history = []
 
-    def _call_claude(self, user_message: str) -> str:
-        if not self.api_key:
-            raise RuntimeError(
-                "Set ANTHROPIC_API_KEY before using the TLAForge agent or CLI."
-            )
-
-        payload = {
-            "model": self.model,
-            "max_tokens": 4096,
-            "system": BUILDER_API_REFERENCE,
-            "messages": self.history + [{"role": "user", "content": user_message}],
-        }
-
-        req = urllib.request.Request(
-            "https://api.anthropic.com/v1/messages",
-            data=json.dumps(payload).encode(),
-            headers={
-                "Content-Type": "application/json",
-                "anthropic-version": "2023-06-01",
-                "x-api-key": self.api_key,
-            },
-            method="POST",
+    def _call_model(self, user_message: str) -> str:
+        return self.client.complete(
+            system_prompt=BUILDER_API_REFERENCE,
+            history=list(self.history),
+            user_message=user_message,
+            model=self.model,
+            max_tokens=self.max_tokens,
         )
-
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            data = json.loads(resp.read())
-
-        return data["content"][0]["text"]
 
     def _extract_code(self, response: str) -> str:
         """Pull Python code out of a response that may have markdown fences."""
@@ -246,7 +302,7 @@ Please fix the Python code. Remember:
 """
 
             print(f"  [attempt {attempt + 1}] Calling Claude...")
-            response = self._call_claude(message)
+            response = self._call_model(message)
             self.history.append({"role": "user", "content": message})
             self.history.append({"role": "assistant", "content": response})
 
@@ -275,7 +331,7 @@ Please fix the Python code. Remember:
 
 Return the complete updated Python code block.
 """
-        response = self._call_claude(message)
+        response = self._call_model(message)
         self.history.append({"role": "user", "content": message})
         self.history.append({"role": "assistant", "content": response})
 
