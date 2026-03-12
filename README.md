@@ -2,7 +2,12 @@
 
 TLAForge is a small Python package for building TLA+ state machine specs with Python objects instead of raw strings.
 
-The human-first path is the builder library plus the examples in [examples/README.md](/Users/murr/Code/github.com/stevemurr/tlaforge/examples/README.md). The Anthropic-backed agent remains available as a secondary prototype entrypoint.
+The package now has two main layers:
+
+1. A deterministic builder/compiler backend.
+2. A structured session API for conversationally building machine drafts without generating Python code from the model.
+
+The quickest human-first path is still the builder library plus the examples in [examples/README.md](/Users/murr/Code/github.com/stevemurr/tlaforge/examples/README.md).
 
 ## Quick Start
 
@@ -73,6 +78,55 @@ spec = StateMachineSpec(
 )
 ```
 
+## Structured Session Usage
+
+The primary high-level API is `TLAForgeSession`, which manages a typed `MachineDraft` and only exports a handoff artifact when the draft is ready.
+
+```python
+from tlaforge import (
+    BinaryExpr,
+    DraftPatch,
+    PutRuleOp,
+    PutStateOp,
+    PutTransitionOp,
+    RefExpr,
+    RuleDraft,
+    SetInitialStateOp,
+    SetModuleNameOp,
+    StateDraft,
+    TLAForgeSession,
+    TransitionDraft,
+)
+
+session = TLAForgeSession.new(summary="Traffic light controller")
+session.apply_patch(
+    DraftPatch(
+        operations=[
+            SetModuleNameOp(module_name="TrafficLight"),
+            PutStateOp(state=StateDraft(name="red")),
+            PutStateOp(state=StateDraft(name="green")),
+            PutStateOp(state=StateDraft(name="yellow")),
+            SetInitialStateOp(initial_state="red"),
+            PutTransitionOp(transition=TransitionDraft(name="RedToGreen", from_state="red", to_state="green")),
+            PutTransitionOp(transition=TransitionDraft(name="GreenToYellow", from_state="green", to_state="yellow")),
+            PutTransitionOp(transition=TransitionDraft(name="YellowToRed", from_state="yellow", to_state="red")),
+            PutRuleOp(
+                rule=RuleDraft(
+                    name="ValidState",
+                    kind="invariant",
+                    expr=BinaryExpr(op="in", left=RefExpr(name="state"), right=RefExpr(name="States")),
+                )
+            ),
+        ]
+    )
+)
+
+artifact = session.export_handoff()
+print(artifact.tla_source)
+```
+
+To drive a session from an LLM, use a structured client such as `OpenAICompatibleStructuredClient`. The model returns validated `AssistantTurn` data, not Python code.
+
 ## Expression Builders
 
 | Class | TLA+ Output |
@@ -82,6 +136,7 @@ spec = StateMachineSpec(
 | `PrimedVar("x")` | `x'` |
 | `StringLit("s")` | `"s"` |
 | `IntLit(n)` | `n` |
+| `BoolLit(True)` | `TRUE` |
 | `BinOp(l, "=", r)` | `l = r` |
 | `And(e1, e2)` | `/\ e1 /\ e2` |
 | `Or(e1, e2)` | `\/ e1 \/ e2` |
@@ -95,23 +150,6 @@ spec = StateMachineSpec(
 | `FunctionApp(f, k)` | `f[k]` |
 | `Except(f, k, v)` | `[f EXCEPT ![k] = v]` |
 | `SetOf("x", domain, p)` | `{ x \in domain : p }` |
-
-## CLI Prototype
-
-The package-native CLI is:
-
-```bash
-python -m tlaforge.cli --help
-```
-
-This CLI uses the Anthropic-backed agent path, so it is not the main quick start. To use it, set `ANTHROPIC_API_KEY` and then run one of these:
-
-```bash
-python -m tlaforge.cli --demo
-python -m tlaforge.cli --traffic
-python -m tlaforge.cli "An elevator that moves between floors 1-10"
-python -m tlaforge.cli --from-file my_system.txt --output spec.tla --interactive
-```
 
 ## Running Tests
 
@@ -133,9 +171,13 @@ python -m pytest --cov=tlaforge --cov=build_backend --cov-report=term-missing --
 tlaforge/
 ├── tlaforge/
 │   ├── __init__.py
-│   ├── agent.py
 │   ├── builder.py
-│   └── cli.py
+│   ├── compiler.py
+│   ├── draft.py
+│   ├── llm.py
+│   ├── patches.py
+│   ├── session.py
+│   └── validation.py
 ├── examples/
 ├── tests/
 └── README.md

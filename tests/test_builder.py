@@ -4,6 +4,7 @@ from tlaforge.builder import (
     Always,
     And,
     BinOp,
+    BoolLit,
     Definition,
     Eventually,
     Except,
@@ -34,6 +35,8 @@ from tlaforge.builder import (
         (Var("state"), "state"),
         (PrimedVar("state"), "state'"),
         (IntLit(3), "3"),
+        (BoolLit(True), "TRUE"),
+        (BoolLit(False), "FALSE"),
         (StringLit("ok"), '"ok"'),
         (SetLit(), "{}"),
         (SetLit(IntLit(1), IntLit(2)), "{1, 2}"),
@@ -183,7 +186,7 @@ def test_state_machine_emit_omits_extends_when_empty() -> None:
     assert "EXTENDS" not in emitted
 
 
-def test_state_machine_emit_requires_all_aux_init_values() -> None:
+def test_state_machine_validate_requires_all_aux_init_values() -> None:
     spec = StateMachineSpec(
         module_name="Counter",
         states=["idle"],
@@ -192,7 +195,7 @@ def test_state_machine_emit_requires_all_aux_init_values() -> None:
     )
 
     with pytest.raises(ValueError, match="count"):
-        spec.emit()
+        spec.validate()
 
 
 def test_state_machine_emit_rejects_extra_aux_init_values() -> None:
@@ -205,6 +208,36 @@ def test_state_machine_emit_rejects_extra_aux_init_values() -> None:
 
     with pytest.raises(ValueError, match="count"):
         spec.emit()
+
+
+def test_state_machine_validate_rejects_unknown_initial_state() -> None:
+    spec = StateMachineSpec(
+        module_name="Counter",
+        states=["idle"],
+        initial_state="missing",
+    )
+
+    with pytest.raises(ValueError, match="initial_state"):
+        spec.validate()
+
+
+def test_state_machine_validate_rejects_outgoing_terminal_transition() -> None:
+    spec = StateMachineSpec(
+        module_name="Todo",
+        states=["pending", "archived"],
+        initial_state="pending",
+        terminal_states=["archived"],
+        transitions=[
+            StateTransition(
+                name="ReopenArchived",
+                guards=[BinOp(Var("state"), "=", StringLit("archived"))],
+                updates=[BinOp(PrimedVar("state"), "=", StringLit("pending"))],
+            )
+        ],
+    )
+
+    with pytest.raises(ValueError, match="terminal state"):
+        spec.validate()
 
 
 def test_emit_valid_transitions_stub_is_covered_for_both_paths() -> None:

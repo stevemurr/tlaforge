@@ -5,6 +5,7 @@ The LLM calls these classes instead of generating raw TLA+ text.
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
@@ -51,6 +52,14 @@ class IntLit(Expr):
 
     def emit(self) -> str:
         return str(self.value)
+
+
+class BoolLit(Expr):
+    def __init__(self, value: bool):
+        self.value = value
+
+    def emit(self) -> str:
+        return "TRUE" if self.value else "FALSE"
 
 
 class StringLit(Expr):
@@ -306,21 +315,98 @@ class StateMachineSpec:
     def all_vars(self) -> List[str]:
         return [self.state_var] + self.aux_vars
 
-    def _validate_aux_init(self) -> None:
+    def _validate_aux_init(self, errors: List[str] | None = None) -> None:
         missing = [name for name in self.aux_vars if name not in self.aux_init]
         extras = [name for name in self.aux_init if name not in self.aux_vars]
-        errors = []
+        local_errors = []
 
         if missing:
-            errors.append(
+            local_errors.append(
                 "missing initial values for auxiliary variables: "
                 + ", ".join(sorted(missing))
             )
         if extras:
-            errors.append(
+            local_errors.append(
                 "aux_init includes names not declared in aux_vars: "
                 + ", ".join(sorted(extras))
             )
+        if errors is not None:
+            errors.extend(local_errors)
+            return
+        if local_errors:
+            raise ValueError("; ".join(local_errors))
+
+    def _extract_transition_edge(self, transition: StateTransition) -> tuple[str | None, str | None]:
+        from_state = None
+        to_state = None
+        if transition.guards:
+            first_guard = transition.guards[0]
+            if (
+                isinstance(first_guard, BinOp)
+                and isinstance(first_guard.left, Var)
+                and first_guard.left.name == self.state_var
+                and first_guard.op == "="
+                and isinstance(first_guard.right, StringLit)
+            ):
+                from_state = first_guard.right.value
+
+        for update in transition.updates:
+            if (
+                isinstance(update, BinOp)
+                and isinstance(update.left, PrimedVar)
+                and update.left.name == self.state_var
+                and update.op == "="
+                and isinstance(update.right, StringLit)
+            ):
+                to_state = update.right.value
+                break
+        return from_state, to_state
+
+    def validate(self) -> None:
+        errors: List[str] = []
+
+        if not self.module_name.strip():
+            errors.append("module_name must not be empty")
+
+        self._validate_aux_init(errors)
+
+        if self.state_var in self.aux_vars:
+            errors.append(f"state_var {self.state_var!r} may not also appear in aux_vars")
+
+        for label, values in (
+            ("states", self.states),
+            ("aux_vars", self.aux_vars),
+            ("terminal_states", self.terminal_states),
+            ("transitions", [transition.name for transition in self.transitions]),
+        ):
+            duplicates = [value for value, count in Counter(values).items() if count > 1]
+            if duplicates:
+                errors.append(f"duplicate values in {label}: {', '.join(sorted(duplicates))}")
+
+        if self.initial_state is not None and self.initial_state not in self.states:
+            errors.append(f"initial_state {self.initial_state!r} is not declared in states")
+
+        unknown_terminal_states = sorted(set(self.terminal_states) - set(self.states))
+        if unknown_terminal_states:
+            errors.append(
+                "terminal_states reference unknown states: " + ", ".join(unknown_terminal_states)
+            )
+
+        for transition in self.transitions:
+            from_state, to_state = self._extract_transition_edge(transition)
+            if from_state is not None and from_state not in self.states:
+                errors.append(
+                    f"transition {transition.name!r} references unknown from_state {from_state!r}"
+                )
+            if to_state is not None and to_state not in self.states:
+                errors.append(
+                    f"transition {transition.name!r} references unknown to_state {to_state!r}"
+                )
+            if from_state is not None and from_state in self.terminal_states:
+                errors.append(
+                    f"transition {transition.name!r} leaves terminal state {from_state!r}"
+                )
+
         if errors:
             raise ValueError("; ".join(errors))
 
@@ -383,6 +469,7 @@ class StateMachineSpec:
         )
 
     def emit(self) -> str:
+        self.validate()
         sections = [
             self._emit_header(),
             "",

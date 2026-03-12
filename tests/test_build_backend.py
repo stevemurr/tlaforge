@@ -10,6 +10,7 @@ def test_metadata_text_includes_test_extra_and_python_requirement() -> None:
     assert "Name: tlaforge" in metadata
     assert "Version: 0.1.0" in metadata
     assert "Requires-Python: >=3.11" in metadata
+    assert "Requires-Dist: pydantic>=2,<3" in metadata
     assert "Provides-Extra: test" in metadata
     assert 'Requires-Dist: pytest>=8,<9; extra == "test"' in metadata
 
@@ -35,7 +36,7 @@ def test_package_sources_include_python_modules() -> None:
     sources = dict(build_backend._package_sources())
 
     assert "tlaforge/__init__.py" in sources
-    assert "tlaforge/cli.py" in sources
+    assert "tlaforge/session.py" in sources
     assert sources["tlaforge/__init__.py"].startswith(b'"""Public package surface')
 
 
@@ -50,7 +51,8 @@ def test_build_wheel_contains_package_files_and_metadata(tmp_path: Path) -> None
 
     assert wheel_name == "tlaforge-0.1.0-py3-none-any.whl"
     assert "tlaforge/__init__.py" in names
-    assert "tlaforge/agent.py" in names
+    assert "tlaforge/session.py" in names
+    assert "tlaforge/draft.py" in names
     assert "tlaforge-0.1.0.dist-info/WHEEL" in names
     assert "Name: tlaforge" in metadata
     assert "tlaforge/__init__.py,sha256=" in record

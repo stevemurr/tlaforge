@@ -12,6 +12,9 @@ requires-python = ">=3.11"
 authors = [
   { name = "Steve Murr" }
 ]
+dependencies = [
+  "pydantic>=2,<3",
+]
 
 [project.optional-dependencies]
 test = [

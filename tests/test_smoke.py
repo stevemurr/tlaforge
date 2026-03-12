@@ -1,4 +1,5 @@
 import os
+import site
 import subprocess
 import sys
 import tempfile
@@ -16,11 +17,12 @@ def _venv_python(venv_dir: Path) -> Path:
 
 
 class PackageSmokeTests(unittest.TestCase):
-    def test_editable_install_imports_and_cli_help(self) -> None:
+    def test_editable_install_imports_public_session_api(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             venv_dir = Path(tmp_dir) / "venv"
             env = os.environ.copy()
             env["PIP_DISABLE_PIP_VERSION_CHECK"] = "1"
+            env["PYTHONPATH"] = os.pathsep.join(site.getsitepackages())
 
             subprocess.run(
                 [sys.executable, "-m", "venv", str(venv_dir)],
@@ -38,6 +40,7 @@ class PackageSmokeTests(unittest.TestCase):
                     "pip",
                     "install",
                     "--no-build-isolation",
+                    "--no-deps",
                     "-e",
                     str(REPO_ROOT),
                 ],
@@ -53,10 +56,12 @@ class PackageSmokeTests(unittest.TestCase):
                     str(python_bin),
                     "-c",
                     (
-                        "from tlaforge import Definition, StateMachineSpec, "
-                        "StateTransition, TLAForgeAgent; "
+                        "from tlaforge import DraftCompiler, MachineDraft, "
+                        "StateMachineSpec, TLAForgeSession; "
                         "print(StateMachineSpec.__name__); "
-                        "print(TLAForgeAgent.__name__)"
+                        "print(MachineDraft.__name__); "
+                        "print(TLAForgeSession.__name__); "
+                        "print(DraftCompiler.__name__)"
                     ),
                 ],
                 check=True,
@@ -67,16 +72,5 @@ class PackageSmokeTests(unittest.TestCase):
             )
             self.assertEqual(
                 import_result.stdout.strip().splitlines(),
-                ["StateMachineSpec", "TLAForgeAgent"],
+                ["StateMachineSpec", "MachineDraft", "TLAForgeSession", "DraftCompiler"],
             )
-
-            help_result = subprocess.run(
-                [str(python_bin), "-m", "tlaforge.cli", "--help"],
-                check=True,
-                capture_output=True,
-                cwd=REPO_ROOT,
-                env=env,
-                text=True,
-            )
-            self.assertIn("usage:", help_result.stdout)
-            self.assertIn("--traffic", help_result.stdout)
