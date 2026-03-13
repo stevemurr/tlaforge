@@ -10,6 +10,11 @@ import urllib.request
 from .draft import AssistantTurn, ConversationMessage, MachineDraft
 from .errors import StructuredOutputError
 
+LIVE_BASE_URL_ENV = "TLAFORGE_LIVE_BASE_URL"
+LIVE_MODEL_ENV = "TLAFORGE_LIVE_MODEL"
+LIVE_API_KEY_ENV = "TLAFORGE_LIVE_API_KEY"
+_LOCAL_PROVIDER_EXTRA_BODY = {"chat_template_kwargs": {"thinking": False}}
+
 
 class StructuredTurnClient(Protocol):
     def complete_turn(
@@ -106,6 +111,53 @@ class OpenAICompatibleStructuredClient:
         self.timeout = timeout
         self.max_tokens = max_tokens
         self.use_response_format = use_response_format
+
+    @classmethod
+    def local(
+        cls,
+        *,
+        model: str,
+        api_key: str,
+        base_url: str,
+        timeout: int = 60,
+        max_tokens: int = 1024,
+    ) -> OpenAICompatibleStructuredClient:
+        """Construct a strict local-provider client with known-good defaults."""
+        return cls(
+            model=model,
+            api_key=api_key,
+            base_url=base_url,
+            extra_body=_LOCAL_PROVIDER_EXTRA_BODY,
+            timeout=timeout,
+            max_tokens=max_tokens,
+            use_response_format=True,
+        )
+
+    @classmethod
+    def from_live_env(
+        cls,
+        *,
+        timeout: int = 60,
+        max_tokens: int = 1024,
+    ) -> OpenAICompatibleStructuredClient:
+        """Construct a strict local-provider client from TLAFORGE_LIVE_* env vars."""
+        missing = [
+            name
+            for name in (LIVE_BASE_URL_ENV, LIVE_MODEL_ENV, LIVE_API_KEY_ENV)
+            if not os.environ.get(name)
+        ]
+        if missing:
+            missing_list = ", ".join(missing)
+            raise RuntimeError(
+                f"Set {missing_list} before using the local TLAForge live client."
+            )
+        return cls.local(
+            model=os.environ[LIVE_MODEL_ENV],
+            api_key=os.environ[LIVE_API_KEY_ENV],
+            base_url=os.environ[LIVE_BASE_URL_ENV],
+            timeout=timeout,
+            max_tokens=max_tokens,
+        )
 
     def complete_turn(
         self,

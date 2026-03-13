@@ -127,6 +127,20 @@ print(artifact.tla_source)
 
 To drive a session from an LLM, use a structured client such as `OpenAICompatibleStructuredClient`. The model returns validated `AssistantTurn` data, not Python code.
 
+For a local OpenAI-compatible model server, use the local-provider preset instead of repeating provider-specific knobs inline:
+
+```python
+from tlaforge import OpenAICompatibleStructuredClient
+
+client = OpenAICompatibleStructuredClient.local(
+    model="nemotron3-nano",
+    api_key="sk-change-me",
+    base_url="http://192.168.1.237:4000",
+)
+```
+
+This preset enables strict JSON-schema responses and disables provider "thinking" so structured output stays stable.
+
 ## Expression Builders
 
 | Class | TLA+ Output |
@@ -163,6 +177,27 @@ Then run the canonical coverage command:
 
 ```bash
 python -m pytest --cov=tlaforge --cov=build_backend --cov-report=term-missing --cov-fail-under=90
+```
+
+## Live Provider Tests
+
+The live suite is opt-in and hits a real local OpenAI-compatible model provider through the same `OpenAICompatibleStructuredClient` runtime path used by the library.
+
+Required environment variables:
+
+- `TLAFORGE_LIVE_BASE_URL`
+- `TLAFORGE_LIVE_MODEL`
+- `TLAFORGE_LIVE_API_KEY`
+
+The local provider requires authentication even for health/model checks, and the live harness disables provider "thinking" to keep structured output deterministic enough for schema validation.
+
+Run the live tests with:
+
+```bash
+env TLAFORGE_LIVE_BASE_URL=http://192.168.1.237:4000 \
+    TLAFORGE_LIVE_MODEL=nemotron3-nano \
+    TLAFORGE_LIVE_API_KEY=sk-change-me \
+    python -m pytest -m live_network tests/test_llm_live.py -vv
 ```
 
 ## Project Layout

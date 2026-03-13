@@ -25,6 +25,9 @@ test = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
+markers = [
+  "live_network: opt-in tests that hit a real local model provider",
+]
 
 [tool.coverage.run]
 omit = [
