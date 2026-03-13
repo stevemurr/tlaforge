@@ -21,7 +21,9 @@ python -m pip install -e .
 3. [03-retrying-job/README.md](/Users/murr/Code/github.com/stevemurr/tlaforge/examples/03-retrying-job/README.md)
    Add an auxiliary variable, a constant, and a richer invariant.
 4. [04-live-todo-handoff/README.md](/Users/murr/Code/github.com/stevemurr/tlaforge/examples/04-live-todo-handoff/README.md)
-   Use a live local model to turn user-style requests into a spec bundle and Pi-ready coding-agent handoff.
+   Use a live local model to turn scripted user requests into a spec bundle and Pi-ready coding-agent handoff.
+5. [05-pi-interactive-spec-loop/README.md](/Users/murr/Code/github.com/stevemurr/tlaforge/examples/05-pi-interactive-spec-loop/README.md)
+   Put Pi in the loop from the first turn so it interviews the user and iteratively shapes the draft.
 
 Examples `01` through `03` contain:
 
@@ -34,3 +36,9 @@ Example `04` is a live run instead:
 - `README.md` with the walkthrough
 - `run.py` with the structured session, bundle export, and Pi command generation
 - no committed `spec.tla`, because the local model is part of the example
+
+Example `05` is a prompt-and-transcript walkthrough:
+
+- `README.md` with the Pi-first workflow
+- `pi-bootstrap-prompt.md` with a reusable prompt for interactive spec discovery
+- no committed `spec.tla`, because the point is the iterative requirements loop rather than a fixed output

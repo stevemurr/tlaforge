@@ -6,6 +6,8 @@ Start from user-style requests, use a live local model to build a structured `Ma
 
 This example keeps the repo boundary intact: TLAForge stops at the validated spec and handoff package. It does not generate or own the app implementation itself.
 
+If you want Pi to drive the requirements conversation from the first turn instead of entering only at handoff time, start with [examples/05-pi-interactive-spec-loop/README.md](/Users/murr/Code/github.com/stevemurr/tlaforge/examples/05-pi-interactive-spec-loop/README.md).
+
 ## What This Example Does
 
 1. Creates a `TLAForgeSession` for a single-todo workflow.
