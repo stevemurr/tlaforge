@@ -20,9 +20,17 @@ python -m pip install -e .
    Add a terminal state and a simple invariant.
 3. [03-retrying-job/README.md](/Users/murr/Code/github.com/stevemurr/tlaforge/examples/03-retrying-job/README.md)
    Add an auxiliary variable, a constant, and a richer invariant.
+4. [04-live-todo-handoff/README.md](/Users/murr/Code/github.com/stevemurr/tlaforge/examples/04-live-todo-handoff/README.md)
+   Use a live local model to turn user-style requests into a handoff artifact for a coding agent.
 
-Each example contains:
+Examples `01` through `03` contain:
 
 - `README.md` with the step-by-step walkthrough
 - `build.py` with the builder code
 - `spec.tla` with the committed generated output
+
+Example `04` is a live run instead:
+
+- `README.md` with the walkthrough
+- `run.py` with the structured session and handoff flow
+- no committed `spec.tla`, because the local model is part of the example
