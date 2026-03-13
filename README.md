@@ -25,6 +25,7 @@ Then work through the example ladder:
 2. [examples/02-todo-workflow/README.md](/Users/murr/Code/github.com/stevemurr/tlaforge/examples/02-todo-workflow/README.md)
 3. [examples/03-retrying-job/README.md](/Users/murr/Code/github.com/stevemurr/tlaforge/examples/03-retrying-job/README.md)
 4. [examples/04-live-todo-handoff/README.md](/Users/murr/Code/github.com/stevemurr/tlaforge/examples/04-live-todo-handoff/README.md)
+   Spec generation plus Pi-ready coding-agent handoff for a todo app.
 
 ## Builder-First Usage
 
